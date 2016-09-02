@@ -68,7 +68,7 @@ void makerbinocular::init()
         if (desc.idVendor ==  0x04b4 && desc.idProduct ==  0x1005)
         {
             std::cout <<  "============================================" << std::endl;
-            std::cout <<  "Found cypress usb" <<  "idVendor: " << desc.idVendor <<  "idProduct: " << desc.idProduct <<  std::endl;
+            printf("Found cypress usb device: idVendor 0x%04x idProduct: 0x%04x\r\n", desc.idVendor,desc.idProduct);
             std::cout <<  "============================================" <<  std::endl;
             idVendorAndProductfound = true;
             break;
@@ -145,7 +145,7 @@ void makerbinocular::init()
 void makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image)
 {
     
-    if (left_image.rows !=  640 |  left_image.cols !=  480 |  right_image.rows !=  480 |  right_image.cols !=  640)
+    if (left_image.rows !=  480 |  left_image.cols !=  640 |  right_image.rows !=  480 |  right_image.cols !=  640)
     {
         std::cout <<  left_image.rows <<  left_image.cols <<  std::endl;
         std::cout <<  "Error: the image size should be: 640 x 480" <<  std::endl;
@@ -157,7 +157,9 @@ void makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image)
     
     int error = libusb_bulk_transfer(dev_handle, bulk_ep_in, datain, buffer_size, &transferd, 1000);
 
-    std::cout <<  transferd <<  std::endl;
+    //std::cout <<  transferd <<  std::endl;
+
+    std::cout << ".";
 
     if (transferd ==  0)
     {
@@ -168,12 +170,12 @@ void makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image)
 
     if (error == 0) 
     {
-        std::cout << "received " <<  std::endl;
+        // std::cout << "received " <<  std::endl;
 
         // frame header
         if (((*datain) ==  0x01) & (*(datain+1) ==  0xfe) & (*(datain+2) ==  0x01) & (*(datain + 3) ==  0xfe))
         {
-            std::cout <<  "get frame header" <<  std::endl;
+            //std::cout <<  "get frame header" <<  std::endl;
         }
         
         /*
@@ -193,10 +195,10 @@ void makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image)
             for (cnt_x = 0; cnt_x < 640; cnt_x++)
             {
                 // left image
-                left_image.at<uchar>(479 - cnt_y, 639 - cnt_x) = *(pcS + cnt_y * 1280 + cnt_x * 2 + 1);
+                left_image.at<uchar>(479 - cnt_y, cnt_x) = *(pcS + cnt_y * 1280 + cnt_x * 2);
 
                 // right image
-                right_image.at<uchar>(479 - cnt_y, 639 - cnt_x) = *(pcS + cnt_y * 1280 + cnt_x * 2);
+                right_image.at<uchar>(479 - cnt_y, cnt_x) = *(pcS + cnt_y * 1280 + cnt_x * 2 + 1);
             }
         }
 
