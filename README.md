@@ -28,3 +28,10 @@ cd build
 cmake ..
 make -j4
 ```
+###权限设置
+如果不设置rules,那么用普通用户启动应用程序的时候,会出现Pemission Denied.解决方法为在`/etc/udev/rules.d`目录中创建rules.例如
+cypress.rules,内容如下:
+```
+SUBSYSTEM=="usb_device", ATTRS{idVendor}=="1234", MODE="0666"
+```
+重启即可.

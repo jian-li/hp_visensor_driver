@@ -18,6 +18,8 @@ public:
     
     bool is_initialized() {return initialized;}
     
+    bool new_frame_arrived() {return has_new_frame;}
+    
 private:
     
     libusb_device ** devs;
@@ -35,6 +37,7 @@ private:
     int buffer_size;
     
     bool initialized;
+    bool has_new_frame;
   };
 
 #endif

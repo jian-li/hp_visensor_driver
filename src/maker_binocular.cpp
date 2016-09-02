@@ -24,7 +24,7 @@ void makerbinocular::init()
     // init required data
     buffer_size = 640 * 480 * 2 + 2048; 
     datain = new u8[buffer_size];
-    
+    has_new_frame = false;
     
     int r;
     int err;
@@ -144,6 +144,7 @@ void makerbinocular::init()
 
 void makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image)
 {
+    has_new_frame = false;
     
     if (left_image.rows !=  480 |  left_image.cols !=  640 |  right_image.rows !=  480 |  right_image.cols !=  640)
     {
@@ -159,7 +160,6 @@ void makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image)
 
     //std::cout <<  transferd <<  std::endl;
 
-    std::cout << ".";
 
     if (transferd ==  0)
     {
@@ -170,8 +170,6 @@ void makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image)
 
     if (error == 0) 
     {
-        // std::cout << "received " <<  std::endl;
-
         // frame header
         if (((*datain) ==  0x01) & (*(datain+1) ==  0xfe) & (*(datain+2) ==  0x01) & (*(datain + 3) ==  0xfe))
         {
@@ -203,4 +201,6 @@ void makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image)
         }
 
     }
+    
+    has_new_frame = true;
 }

@@ -21,11 +21,14 @@ int main()
         {
             m_makerbinocular.get_frame(left_image, right_image);
 
-            cv::imshow("left image", left_image);
-            cv::waitKey(1);
-            cv::imshow("right image" ,  right_image);
-            cv::waitKey(1);
-            usleep(30000);
+            if (m_makerbinocular.new_frame_arrived())
+            {
+                cv::imshow("left image", left_image);
+                cv::waitKey(1);
+                cv::imshow("right image" ,  right_image);
+                cv::waitKey(1);
+            }
+            usleep(10000);
         }
     }
 
