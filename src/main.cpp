@@ -47,6 +47,7 @@ int main()
     }
 
     // found cypress usb device
+    bool idVendorAndProductfound =  false;
     for (int i = 0; i < cnt; i++)
     {
         device = devs[i];
@@ -60,11 +61,21 @@ int main()
 
         if (desc.idVendor ==  0x04b4 && desc.idProduct ==  0x1005)
         {
-            std::cout <<  "found cypress usb" <<  std::endl;
+            std::cout <<  "============================================" << std::endl;
+            std::cout <<  "Found cypress usb" <<  "idVendor: " << desc.idVendor <<  "idProduct: " << desc.idProduct <<  std::endl;
+            std::cout <<  "============================================" <<  std::endl;
+            idVendorAndProductfound = true;
             break;
         }
     }
 
+    if (idVendorAndProductfound ==  false)
+    {
+        std::cout <<  "============================================" <<  std::endl;
+        std::cout <<  "Error: Can not found the device, please check the idVendor and idProduct!" <<  std::endl;
+        std::cout <<  "============================================" <<  std::endl;
+        return 0;
+    }
     // get cypress usb config desc
     libusb_get_config_descriptor(device,  0,  &config);
 
@@ -130,18 +141,25 @@ int main()
 
     unsigned char * pcS = (u8*) (datain + 32);
     unsigned char * pcD = image; 
-     
+
     cv::Mat left_image_raw(640, 480, CV_8UC1, cv::Scalar(0));
     cv::Mat right_image_raw(640, 480, CV_8UC1, cv::Scalar(0));
-    
+
     cv::Mat left_image_rgb(640, 480, CV_8UC3, cv::Scalar(0));
     cv::Mat right_image_rgb(640, 480, CV_8UC3, cv::Scalar(0));
-    
+
     while (1)
     {
         int error = libusb_bulk_transfer(dev_handle, bulk_ep_in, datain, buffer_size, &transferd, 1000);
 
         std::cout <<  transferd <<  std::endl;
+
+        if (transferd ==  0)
+        {
+            std::cout <<  "============================================" <<  std::endl;
+            std::cout <<  "Warning: No data received ! Please check the buld endpoint address" <<  std::endl;
+            std::cout <<  "============================================" <<  std::endl;
+        }
 
         if (error == 0) 
         {
@@ -159,28 +177,28 @@ int main()
                 {
                     // left image
                     left_image_raw.at<uchar>(cnt_y, 639 - cnt_x) = *(pcS + cnt_y * 1280 + cnt_x * 2 + 1);
-                 
+
                     // right image
                     right_image_raw.at<uchar>(cnt_y, 639 - cnt_x) = *(pcS + cnt_y * 1280 + cnt_x * 2);
                 }
             }
         }
-        /*
+/*
         cv::cvtColor(left_image_raw,  left_image_rgb,  CV_BayerGB2RGB);
         cv::cvtColor(right_image_raw, right_image_rgb,  CV_BayerGB2RGB);
-        */
-       
+ */
+
         cv::imshow("left image", left_image_raw);
         cv::waitKey(1);
-        
+
         cv::imshow("right image" ,  right_image_raw);
         cv::waitKey(1);
-        
+
         std::cout <<  "get on frame" <<  std::endl;
         usleep(30000);
 
     }
-    
+
     libusb_free_device_list(devs, 1);
     libusb_close(dev_handle);
 
