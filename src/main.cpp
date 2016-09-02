@@ -161,31 +161,11 @@ int main()
                     
                     // left image
                     left_image_raw.at<uchar>(cnt_y, cnt_x) = *(pcS + cnt_y * 1280 + cnt_x * 2);
-                    //left_image.at<cv::Vec3b>(cnt_y, cnt_x)[1] = *(pcS + cnt_y * 1280 + cnt_x * 2);
-                    //left_image.at<cv::Vec3b>(cnt_y, cnt_x)[2] = *(pcS + cnt_y * 1280 + cnt_x * 2);
+                 
                     
                     // right image
                     right_image_raw.at<uchar>(cnt_y, cnt_x) = *(pcS + cnt_y * 1280 + cnt_x * 2 + 1);
-                    //right_image.at<cv::Vec3b>(cnt_y, cnt_x)[1] = *(pcS + cnt_y * 1280 + cnt_x * 2 + 1);
-                    //right_image.at<cv::Vec3b>(cnt_y, cnt_x)[2] = *(pcS + cnt_y * 1280 + cnt_x * 2 + 1); 
-                    
-                    /* 
-                    // left camera
-                    if (cnt_x < 640)
-                    {
-                        //r, g, b three channel
-                        *(pcD + (cnt_y *1280 + cnt_x) * 3)     = *(pcS + cnt_y * 1280 + cnt_x * 2);
-                        *(pcD + (cnt_y *1280 + cnt_x) * 3 + 1) = *(pcS + cnt_y * 1280 + cnt_x * 2);
-                        *(pcD + (cnt_y *1280 + cnt_x) * 3 + 2) = *(pcS + cnt_y * 1280 + cnt_x * 2);
-                    }
-                    else                                        // right camera
-                    {
-                        *(pcD + (cnt_y *1280 + cnt_x) * 3)     = *(pcS + cnt_y * 1280 + (cnt_x - 640) * 2 + 1);
-                        *(pcD + (cnt_y *1280 + cnt_x) * 3 + 1) = *(pcS + cnt_y * 1280 + (cnt_x - 640) * 2 + 1);
-                        *(pcD + (cnt_y *1280 + cnt_x) * 3 + 2) = *(pcS + cnt_y * 1280 + (cnt_x - 640) * 2 + 1);
-                    }
-                    */
-                    //std::cout << cnt_x <<  " " <<   cnt_y << " ok  " << std::endl;
+                 
                 }
             }
         }
@@ -198,12 +178,12 @@ int main()
         
         cv::imshow("right image" ,  right_image_rgb);
         cv::waitKey(1);
-
+        
         std::cout <<  "get on frame" <<  std::endl;
         usleep(30000);
 
     }
-
+    
     libusb_free_device_list(devs, 1);
     libusb_close(dev_handle);
 
