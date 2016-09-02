@@ -7,4 +7,12 @@ sudo apt-get install libopencv-dev #opencv的支持
 ```
 
 ###idVendor和idProduct
-插拔双目相机,在终端输入dmesg,找到Product为DUAL-CAM GLOBAL M9V024的usb设备对应的idVendor和idProduct.
+插拔双目相机,在终端输入dmesg,找到Product为DUAL-CAM GLOBAL M9V024的usb设备对应的idVendor和idProduct.i
+
+###编译
+```
+mkdir build
+cd build
+cmake ..
+make -j4
+```
