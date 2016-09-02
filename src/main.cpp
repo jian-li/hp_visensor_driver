@@ -155,28 +155,25 @@ int main()
             int cnt_y,  cnt_x;
             for (cnt_y  = 0; cnt_y < 480; cnt_y++)
             {
-                for (cnt_x = 0; cnt_x < 1280; cnt_x++)
+                for (cnt_x = 0; cnt_x < 640; cnt_x++)
                 {
-                    
-                    
                     // left image
-                    left_image_raw.at<uchar>(cnt_y, cnt_x) = *(pcS + cnt_y * 1280 + cnt_x * 2);
+                    left_image_raw.at<uchar>(cnt_y, 639 - cnt_x) = *(pcS + cnt_y * 1280 + cnt_x * 2 + 1);
                  
-                    
                     // right image
-                    right_image_raw.at<uchar>(cnt_y, cnt_x) = *(pcS + cnt_y * 1280 + cnt_x * 2 + 1);
-                 
+                    right_image_raw.at<uchar>(cnt_y, 639 - cnt_x) = *(pcS + cnt_y * 1280 + cnt_x * 2);
                 }
             }
         }
-        
-        cv::cvtColor(left_image_raw,  left_image_rgb,  CV_BayerBG2RGB);
-        cv::cvtColor(right_image_raw, right_image_rgb,  CV_BayerBG2BGR);
-        
-        cv::imshow("left image", left_image_rgb);
+        /*
+        cv::cvtColor(left_image_raw,  left_image_rgb,  CV_BayerGB2RGB);
+        cv::cvtColor(right_image_raw, right_image_rgb,  CV_BayerGB2RGB);
+        */
+       
+        cv::imshow("left image", left_image_raw);
         cv::waitKey(1);
         
-        cv::imshow("right image" ,  right_image_rgb);
+        cv::imshow("right image" ,  right_image_raw);
         cv::waitKey(1);
         
         std::cout <<  "get on frame" <<  std::endl;
