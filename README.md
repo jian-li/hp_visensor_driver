@@ -1,8 +1,10 @@
 #binocular_driver
 ###安装环境配置,安装opencv,libusb
 ```
+sudo apt-get install build-essential #install gcc, g++
+sudo apt-get install libboost-dev
 sudo apt-get install cmake # 安装cmake
-sudo apt-get install libusb-dev #libusb支持
+sudo apt-get install libusb-1.0-0-dev #libusb支持
 sudo apt-get install libopencv-dev #opencv的支持
 ```
 
@@ -27,6 +29,7 @@ mkdir build
 cd build
 cmake ..
 make -j4
+<<<<<<< HEAD
 ```
 ###权限设置
 如果不设置rules,那么用普通用户启动应用程序的时候,会出现Pemission Denied.解决方法为在`/etc/udev/rules.d`目录中创建rules.例如
