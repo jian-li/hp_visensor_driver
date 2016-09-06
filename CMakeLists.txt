@@ -4,7 +4,10 @@ project(maker_binocular)
 
 find_package(OpenCV REQUIRED)
 
-include_directories(${PROJECT_SOURCE_DIR}/include)
+include_directories(
+	${PROJECT_SOURCE_DIR}/include
+	${OpenCV_INCLUDE_DIRS}
+)
 
 add_executable(binocular_driver 
 	src/main.cpp

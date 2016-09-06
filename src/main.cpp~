@@ -15,7 +15,7 @@ int main()
     cv::Mat left_image(480, 640, CV_8UC1, cv::Scalar(0));
     cv::Mat right_image(480, 640, CV_8UC1, cv::Scalar(0));
 
-    	
+    if (m_makerbinocular.is_initialized())
     {
         while (1)
         {
