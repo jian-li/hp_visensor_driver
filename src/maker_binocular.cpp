@@ -26,6 +26,11 @@ void makerbinocular::init()
     datain = new u8[buffer_size];
     has_new_frame = false;
     
+    
+    current_image_time = 0;
+    current_imu_time = 0;
+    time_elapsed =  0;
+    
     int r;
     int err;
     ssize_t cnt;
@@ -141,9 +146,19 @@ void makerbinocular::init()
     initialized = true;
 }
 
+void makerbinocular::get_imu_data(float acc[3], float gyro[3])
+{
+    for (int i = 0; i < 3; i++)
+    {
+        acc[i] = acc_raw[i];
+        gyro[i] = gyro_raw[i]; 
+    }
+}
+
 
 void makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image)
 {
+    time_elapsed = 0;
     has_new_frame = false;
     
     if (left_image.rows !=  480 |  left_image.cols !=  640 |  right_image.rows !=  480 |  right_image.cols !=  640)
@@ -160,7 +175,6 @@ void makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image)
 
     //std::cout <<  transferd <<  std::endl;
 
-
     if (transferd ==  0)
     {
         std::cout <<  "============================================" <<  std::endl;
@@ -175,6 +189,35 @@ void makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image)
         {
             //std::cout <<  "get frame header" <<  std::endl;
         }
+       
+        int time_stamp = *(datain + 8) | *(datain + 9) <<  8;
+        
+        time_elapsed = 1.0 * time_stamp * 256 / 108;
+        std::cout <<  time_elapsed <<  std::endl;
+        
+        current_image_time = current_image_time + time_elapsed;
+        current_imu_time = current_imu_time + time_elapsed;
+        
+        int raw_acc_x = (short) (datain[12] | datain[13] << 8);
+        int raw_acc_y = (short) (datain[14] | datain[15] << 8);
+        int raw_acc_z = (short) (datain[16] | datain[17] << 8);
+        
+        int raw_gyro_x = (short) (datain[18] | datain[19] << 8);
+        int raw_gyro_y = (short) (datain[20] | datain[21] << 8);
+        int raw_gyro_z = (short) (datain[22] | datain[23] << 8);
+        
+        int raw_temprature = (short) (datain[24] | datain[25] << 8);
+        
+        acc_raw[0] = raw_acc_x * 1.0 / 8192 / 2 * 9.8;
+        acc_raw[1] = raw_acc_y * 1.0 / 8192 / 2 * 9.8;
+        acc_raw[2] = raw_acc_z * 1.0 / 8192 / 2 * 9.8;
+        
+        gyro_raw[0] = raw_gyro_x * 1.0 / 131;
+        gyro_raw[1] = raw_gyro_y * 1.0 / 131;
+        gyro_raw[2] = raw_gyro_z * 1.0 / 131;
+        
+        std::cout <<  acc_raw[0] << " " <<  acc_raw[1] <<  " "<< acc_raw[2] <<  std::endl;
+        std::cout <<  gyro_raw[0] << " " <<  gyro_raw[1] <<  " "<< gyro_raw[2] <<  std::endl;
         
         /*
         else
