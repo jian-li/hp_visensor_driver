@@ -37,3 +37,6 @@ cypress.rules,内容如下:
 SUBSYSTEM=="usb_device", ATTRS{idVendor}=="1234", MODE="0666"
 ```
 重启即可.
+
+###IMU模块
+Maker binocular集成了mpu6050 IMU模块,加速度计的量程为2g,陀螺仪的量程为2000deg/s.
