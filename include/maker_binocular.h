@@ -4,7 +4,6 @@
 #include <libusb-1.0/libusb.h>
 #include <boost/concept_check.hpp>
 
-
 typedef unsigned char u8;
 
 /**
