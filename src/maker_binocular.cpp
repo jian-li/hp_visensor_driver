@@ -208,9 +208,9 @@ void makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image)
         
         int raw_temprature = (short) (datain[24] | datain[25] << 8);
         
-        acc_raw[0] = raw_acc_x * 1.0 / 8192 / 2 * 9.8;
-        acc_raw[1] = raw_acc_y * 1.0 / 8192 / 2 * 9.8;
-        acc_raw[2] = raw_acc_z * 1.0 / 8192 / 2 * 9.8;
+        acc_raw[0] = raw_acc_x * 1.0 / 16384 * 9.8;
+        acc_raw[1] = raw_acc_y * 1.0 / 16384 * 9.8;
+        acc_raw[2] = raw_acc_z * 1.0 / 16384 * 9.8;
         
         gyro_raw[0] = raw_gyro_x * 1.0 / 16.4;
         gyro_raw[1] = raw_gyro_y * 1.0 / 16.4;
