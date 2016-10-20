@@ -40,3 +40,6 @@ SUBSYSTEM=="usb_device", ATTRS{idVendor}=="1234", MODE="0666"
 
 ###IMU模块
 Maker binocular集成了mpu6050 IMU模块,加速度计的量程为2g,陀螺仪的量程为2000deg/s.
+
+###120Hz的IMU采集频率
+Maker binocular最新的固件版本IMU采集频率为120Hz,图像的传输也是分成４块进行传输，该部分的驱动在highimufreq分支中。
