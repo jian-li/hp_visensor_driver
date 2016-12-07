@@ -157,7 +157,7 @@ void makerbinocular::get_imu_data(float acc[3], float gyro[3])
     }
 }
 
-bool makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image, float acc[12],  float gyro[12],float image_interval, float imu_interval[4])
+bool makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image, float acc[12],  float gyro[12],float& image_interval, float imu_interval[4])
 {
     time_elapsed = 0;
     has_new_frame = false;
@@ -206,7 +206,9 @@ bool makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image, float 
             time_elapsed = 1.0 * time_stamp * 256 / 108;
             std::cout <<  time_elapsed <<  std::endl;
             
+            // time elapsed 
             imu_interval[i] = time_elapsed;
+            image_interval = image_interval + time_elapsed;
 
             current_image_time = current_image_time + time_elapsed;
             current_imu_time = current_imu_time + time_elapsed;
@@ -242,11 +244,6 @@ bool makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image, float 
             else
             {
                 imu_initialized = true;
-                /*
-                acc_raw[0 + 3 * i] -=  acc_zero_bias[0];
-                acc_raw[1 + 3 * i] -=  acc_zero_bias[1];
-                acc_raw[2 + 3 * i] -=  acc_zero_bias[2];
-                */
                 
                 gyro_raw[0 + 3 * i] -=  gyro_zero_bias[0];
                 gyro_raw[1 + 3 * i] -=  gyro_zero_bias[1];

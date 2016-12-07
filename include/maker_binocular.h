@@ -39,7 +39,7 @@ public:
      * @param right_image right image of the stereo camera
      * @return bool True: get new full image,  false: doesn't get new full image
      */
-    bool get_frame(cv::Mat & left_image,  cv::Mat & right_image, float acc[12],  float gyro[12], float camera_interval, float imu_interval[4]);
+    bool get_frame(cv::Mat & left_image,  cv::Mat & right_image, float acc[12],  float gyro[12], float &camera_interval, float imu_interval[4]);
     
     /**
      * @brief Get the flag weather the driver has been initialized
