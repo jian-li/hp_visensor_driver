@@ -32,9 +32,9 @@ make -j4
 ```
 ###权限设置
 如果不设置rules,那么用普通用户启动应用程序的时候,会出现Pemission Denied.解决方法为在`/etc/udev/rules.d`目录中创建rules.例如
-cypress.rules,内容如下:
+cypress.rules,内容如下（idVendor和idProduct在上面用dmesg得到的信息里面）:
 ```
-SUBSYSTEM=="usb_device", ATTRS{idVendor}=="1234", MODE="0666"
+ ATTRS{idVendor}=="04b4", ATTRS{idProduct}=="1234", MODE="0666"
 ```
 重启即可.
 
@@ -43,3 +43,6 @@ Maker binocular集成了mpu6050 IMU模块,加速度计的量程为2g,陀螺仪�
 
 ###Ros Driver
 For a ROS driver, please go to this url:http://git.oschina.net/JaneLee/maker_binocular_ros
+
+###固件版本
+Maker binocular的固件暂时有两种，旧的版本的固件IMU采集频率为30Hz，新的版本频率为120Hz，新旧版本的固件图像采集不一样。如果采集的图像只有下面1/4有图像，那么需要切换到120HzIMU采集频率的版本，分支为`highimufreq`。Master分支的IMU采集频率为30Hz，图像为一次传输一整幅图像。
