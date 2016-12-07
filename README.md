@@ -40,3 +40,6 @@ SUBSYSTEM=="usb_device", ATTRS{idVendor}=="1234", MODE="0666"
 
 ###IMU模块
 Maker binocular集成了mpu6050 IMU模块,加速度计的量程为2g,陀螺仪的量程为2000deg/s.
+
+###Ros Driver
+For a ROS driver, please go to this url:http://git.oschina.net/JaneLee/maker_binocular_ros
