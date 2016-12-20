@@ -37,9 +37,9 @@ public:
      * 
      * @param left_image left image of the stereo camera
      * @param right_image right image of the stereo camera
-     * @return void
+     * @return bool True: get new full image,  false: doesn't get new full image
      */
-    void get_frame(cv::Mat & left_image,  cv::Mat & right_image);
+    bool get_frame(cv::Mat & left_image,  cv::Mat & right_image, float acc[12],  float gyro[12], float &camera_interval, float imu_interval[4]);
     
     /**
      * @brief Get the flag weather the driver has been initialized
@@ -101,8 +101,8 @@ private:
     libusb_device *device;
     libusb_device_handle *dev_handle;
 
-    u8 * datain;
-
+    u8 * image_buff;
+    
     /// time elapsed since last camera frame,  unit is us
     long time_elapsed;
     /// time elapsed since last imu frame,  unit is us
@@ -115,8 +115,23 @@ private:
     /// builk in end point address
     u8 bulk_ep_in;
     
+    // sample 1000 imu datas to estimate tht zero bias
+    int imu_init_state;
+    double acc_zero_bias[3];
+    double gyro_zero_bias[3];
+    
+    // 
+    bool imu_initialized;
+    // 
     float gyro_raw[3];
     float acc_raw[3];
+    
+    // left and right image
+    cv::Mat left_image_;
+    cv::Mat right_image_;
+    
+    // quater part
+    int quarter_part_;
     
     int buffer_size;
 
