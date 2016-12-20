@@ -170,12 +170,14 @@ bool makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image, float 
     
     int transferd;
     unsigned char * pcS = (u8*) (image_buff);
-    const int quarter_frame_size = 640 * 480 * 2 / 4 + 32;
-    const int data_incremental = 640 * 480 * 2 / 4;
+    const int picture_part = 10;
+
+    const int part_frame_size = 640 * 480 * 2 / picture_part + 32;
+    const int data_incremental = 640 * 480 * 2 / picture_part;
     
-    u8 data_buff[quarter_frame_size];
-    
-    for (int  i = 0; i < 4; i++)
+    u8 data_buff[part_frame_size];
+
+    for (int  i = 0; i < picture_part; i++)
     {
         int error = libusb_bulk_transfer(dev_handle, bulk_ep_in, data_buff, buffer_size, &transferd, 1000);
         
@@ -259,6 +261,9 @@ bool makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image, float 
             }
         }
 
+        if(i != part_frame_size - 1)
+            continue;
+
         int cnt_y,  cnt_x;
         for (cnt_y  = 0; cnt_y < 480; cnt_y++)
         {
@@ -271,7 +276,6 @@ bool makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image, float 
                 right_image.at<uchar>(479 - cnt_y, cnt_x) = *(pcS + cnt_y * 1280 + cnt_x * 2 + 1);
             }
         }
-
     }
 
     has_new_frame = true;
