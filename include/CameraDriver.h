@@ -4,26 +4,58 @@
 #include <libusb-1.0/libusb.h>
 #include <boost/concept_check.hpp>
 
+using namespace cv;
+using namespace std;
+
+#define IMAGE_PART 10
+#define IMAGE_WIDTH 640
+#define IMAGE_HEIGHT 480
+
+class imu_msg
+{
+public:
+    imu_msg();
+    ~imu_msg();
+
+    double ts_;                                               // time elapsed from the start of the driver
+    double acc_x_, acc_y_, acc_z_;
+    double gyro_x_, gyro_y_, gyro_z_;
+};
+
+//  the left image and right image are hardware synchronized
+class image_msg
+{
+public:
+    image_msg();
+    ~image_msg();
+
+    // time elapsed from the start of the driver
+    double ts_;
+    Mat left_image_;
+    Mat right_image_;
+    bool is_color_;
+};
+
 typedef unsigned char u8;
 
 /**
- * @brief Driver for maker binocular 
+ * @brief Camera Driver for maker binocular 
  * Stereo images and 3 axis accelemeters and 3 axis gyroscope data are transfered
  * 
  */
-class makerbinocular {
+class CameraDriver{
 public:
     /**
-     * @brief Constructor of class makerbinocular
+     * @brief Constructor of class CameraDriver 
      * 
      */
-    makerbinocular();
+    CameraDriver();
     
     /**
      * @brief Deconstructor of the makerbinocular
      * 
      */
-    ~makerbinocular();
+    ~CameraDriver();
     
     /**
      * @brief Init the maker binocular driver
@@ -85,6 +117,14 @@ public:
      * @return void
      */
     void get_imu_data(float acc[3],  float gyro[3]);
+    
+    /**
+     * @brief Produce imu and image message
+     */
+    void produce();
+    
+    
+    void consume();
 
 private:
 
@@ -137,6 +177,14 @@ private:
 
     bool initialized;
     bool has_new_frame;
-  };
+    
+    // ring buffer store imu and image message
+    std::vector<imu_msg> imu_ring_buf_;
+    int imu_idx_;
+    std::mutex imu_mutex_;
+    std::vector<image_msg> img_ring_buf_; 
+    int img_idx_;
+    std::mutex img_mutex_;
+};
 
 #endif

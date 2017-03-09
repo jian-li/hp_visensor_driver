@@ -1,16 +1,51 @@
-#include "maker_binocular.h"
+#include "CameraDriver.h"
 #include <iostream>
 #include <stdio.h>
-#include <boost/concept_check.hpp>
 
-makerbinocular::makerbinocular()
+imu_msg::imu_msg()
+{
+    ts_ = 0;
+    acc_x_ = 0;
+    acc_y_ = 0;
+    acc_z_ = 0;
+    gyro_x_ = 0;
+    gyro_y_ = 0;
+    gyro_z_ = 0;
+}
+
+imu_msg::~imu_msg()
+{
+
+}
+
+image_msg::image_msg()
+{
+    ts_ = 0;
+    
+    if (is_color_ == false)
+    {
+        left_image_ = Mat::zeros(640, 480, CV_8UC1);
+        right_image_ = Mat::zeros(640, 480, CV_8UC1);
+    }
+    else
+    {
+        left_image_ = Mat::zeros(640, 480, CV_8UC3);
+        right_image_ = Mat::zeros(640, 480, CV_8UC3);
+    }
+}
+
+image_msg::~image_msg()
+{
+
+}
+
+CameraDriver::CameraDriver()
 {
     init();
 }
 
-makerbinocular::~makerbinocular()
+CameraDriver::~CameraDriver()
 {
-
     libusb_free_device_list(devs, 1);
     libusb_close(dev_handle);
     
@@ -18,7 +53,7 @@ makerbinocular::~makerbinocular()
 }
 
 
-void makerbinocular::init()
+void CameraDriver::init()
 {
     initialized = false;
     imu_initialized = false;
@@ -148,7 +183,7 @@ void makerbinocular::init()
     initialized = true;
 }
 
-void makerbinocular::get_imu_data(float acc[3], float gyro[3])
+void CameraDriver::get_imu_data(float acc[3], float gyro[3])
 {
     for (int i = 0; i < 3; i++)
     {
@@ -157,7 +192,113 @@ void makerbinocular::get_imu_data(float acc[3], float gyro[3])
     }
 }
 
-bool makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image, float acc[12],  float gyro[12],float& image_interval, float imu_interval[4])
+// produce image message and imu message
+void CameraDriver::produce()
+{
+    while (true)
+    {
+        for (int  i = 0; i < IMAGE_PART; i++)
+        {
+            int error = libusb_bulk_transfer(dev_handle, bulk_ep_in, data_buff, buffer_size, &transferd, 1000);
+
+            if (*(data_buff + 3) !=  i)
+            return false;
+
+            if (transferd ==  0)
+            {
+                std::cout <<  "============================================" <<  std::endl;
+                std::cout <<  "Warning: No data received ! Please check the buld endpoint address" <<  std::endl;
+                std::cout <<  "============================================" <<  std::endl;
+                return false;
+            }
+
+            memcpy(image_buff + i * data_incremental, data_buff + 32, data_incremental);
+
+            if (error == 0) 
+            {
+                // frame header
+                if (((*data_buff) ==  0x01) & (*(data_buff + 1) ==  0xfe) & (*(data_buff + 2) ==  0x01) & (*(data_buff + 3) ==  0xfe))
+                {
+
+                }
+                printf("%2x %2x %2x %2x\n",  *(data_buff),  *(data_buff + 1),  *(data_buff + 2),  *(data_buff + 3));
+
+                int time_stamp = *(data_buff + 8) | *(data_buff + 9) <<  8;
+
+                time_elapsed = 1.0 * time_stamp * 256 / 108;
+                std::cout <<  time_elapsed <<  std::endl;
+
+                // time elapsed 
+                imu_interval[i] = time_elapsed;
+                image_interval = image_interval + time_elapsed;
+
+                current_image_time = current_image_time + time_elapsed;
+                current_imu_time = current_imu_time + time_elapsed;
+
+                int raw_acc_x = (short) (data_buff[12] | data_buff[13] << 8);
+                int raw_acc_y = (short) (data_buff[14] | data_buff[15] << 8);
+                int raw_acc_z = (short) (data_buff[16] | data_buff[17] << 8);
+
+                int raw_gyro_x = (short) (data_buff[18] | data_buff[19] << 8);
+                int raw_gyro_y = (short) (data_buff[20] | data_buff[21] << 8);
+                int raw_gyro_z = (short) (data_buff[22] | data_buff[23] << 8);
+
+                int raw_temprature = (short) (data_buff[24] | data_buff[25] << 8);
+
+                acc_raw[0 + 3 * i] = raw_acc_x * 1.0 / 16384 * 9.8;
+                acc_raw[1 + 3 * i] = raw_acc_y * 1.0 / 16384 * 9.8;
+                acc_raw[2 + 3 * i] = raw_acc_z * 1.0 / 16384 * 9.8;
+
+                gyro_raw[0 + 3 * i] = raw_gyro_x * 1.0 / 16.4;
+                gyro_raw[1 + 3 * i] = raw_gyro_y * 1.0 / 16.4;
+                gyro_raw[2 + 3 * i] = raw_gyro_z * 1.0 / 16.4;
+
+                if (imu_init_state <= 100)
+                {
+                    acc_zero_bias[0] = (acc_zero_bias[0] * imu_init_state + acc_raw[0 + 3 * i]) / (imu_init_state + 1);
+                    acc_zero_bias[1] = (acc_zero_bias[1] * imu_init_state + acc_raw[1 + 3 * i]) / (imu_init_state + 1);
+                    acc_zero_bias[2] = (acc_zero_bias[2] * imu_init_state + acc_raw[2 + 3 * i]) / (imu_init_state + 1);
+
+                    gyro_zero_bias[0] = (gyro_zero_bias[0] * imu_init_state + gyro_raw[0 + 3 * i]) / (imu_init_state + 1);
+                    gyro_zero_bias[1] = (gyro_zero_bias[1] * imu_init_state + gyro_raw[1 + 3 * i]) / (imu_init_state + 1);
+                    gyro_zero_bias[2] = (gyro_zero_bias[2] * imu_init_state + gyro_raw[2 + 3 * i]) / (imu_init_state + 1);
+                }
+                else
+                {
+                    imu_initialized = true;
+
+                    gyro_raw[0 + 3 * i] -=  gyro_zero_bias[0];
+                    gyro_raw[1 + 3 * i] -=  gyro_zero_bias[1];
+                    gyro_raw[2 + 3 * i] -=  gyro_zero_bias[2];
+                }
+
+                imu_init_state++;
+
+                if (imu_initialized)
+                {
+                    std::cout <<  acc_raw[0 + 3 * i] << " " <<  acc_raw[1 + 3 * i] <<  " "<< acc_raw[2 + 3 * i] <<  std::endl;
+                    std::cout <<  gyro_raw[0 + 3 * i] << " " <<  gyro_raw[1 + 3 * i] <<  " "<< gyro_raw[2 + 3 * i] <<  std::endl;
+                }
+            }
+
+            int cnt_y,  cnt_x;
+            for (cnt_y  = 0; cnt_y < 480; cnt_y++)
+            {
+                for (cnt_x = 0; cnt_x < 640; cnt_x++)
+                {
+                    // left image
+                    left_image.at<uchar>(479 - cnt_y, cnt_x) = *(pcS + cnt_y * 1280 + cnt_x * 2);
+
+                    // right image
+                    right_image.at<uchar>(479 - cnt_y, cnt_x) = *(pcS + cnt_y * 1280 + cnt_x * 2 + 1);
+                }
+            }
+        }
+    }
+}
+
+// 
+bool CameraDriver::get_frame(cv::Mat &left_image, cv::Mat &right_image, float acc[12],  float gyro[12],float& image_interval, float imu_interval[4])
 {
     time_elapsed = 0;
     has_new_frame = false;
@@ -260,9 +401,6 @@ bool makerbinocular::get_frame(cv::Mat &left_image, cv::Mat &right_image, float 
                 std::cout <<  gyro_raw[0 + 3 * i] << " " <<  gyro_raw[1 + 3 * i] <<  " "<< gyro_raw[2 + 3 * i] <<  std::endl;
             }
         }
-
-        if(i != part_frame_size - 1)
-            continue;
 
         int cnt_y,  cnt_x;
         for (cnt_y  = 0; cnt_y < 480; cnt_y++)
