@@ -1,6 +1,9 @@
 #include "CameraDriver.h"
 #include <iostream>
 #include <stdio.h>
+#include <thread>
+
+using namespace std;
 
 imu_msg::imu_msg()
 {
@@ -13,6 +16,31 @@ imu_msg::imu_msg()
     gyro_z_ = 0;
 }
 
+void imu_msg::set_ts(double ts)
+{
+    ts_ = ts;
+}
+
+void imu_msg::set_acc_data(double acc_x, double acc_y, double acc_z)
+{
+    acc_x_ = acc_x;
+    acc_y_ = acc_y;
+    acc_z_ = acc_z;
+}
+
+void imu_msg::set_gyro_data(double gyro_x, double gyro_y, double gyro_z)
+{
+    gyro_x_ = gyro_x;
+    gyro_y_ = gyro_y;
+    gyro_z_ = gyro_z;
+}
+
+void imu_msg::print_content()
+{
+    cout <<"acc value is:" << acc_x_ << " " << acc_y_ << " " << acc_z_ << endl;
+    cout <<"gyro value is:" << gyro_x_ << " " << gyro_y_ << " " << gyro_z_ << endl;
+}
+
 imu_msg::~imu_msg()
 {
 
@@ -21,17 +49,14 @@ imu_msg::~imu_msg()
 image_msg::image_msg()
 {
     ts_ = 0;
-    
-    if (is_color_ == false)
-    {
-        left_image_ = Mat::zeros(640, 480, CV_8UC1);
-        right_image_ = Mat::zeros(640, 480, CV_8UC1);
-    }
-    else
-    {
-        left_image_ = Mat::zeros(640, 480, CV_8UC3);
-        right_image_ = Mat::zeros(640, 480, CV_8UC3);
-    }
+
+}
+
+void image_msg::set_image_msg(double ts, Mat &left_image, Mat &right_image)
+{
+    ts_ = ts;
+    left_image_ = left_image.clone();
+    right_image_ = right_image.clone();
 }
 
 image_msg::~image_msg()
@@ -49,25 +74,47 @@ CameraDriver::~CameraDriver()
     libusb_free_device_list(devs, 1);
     libusb_close(dev_handle);
     
-    delete image_buff;
+    producer_thread.join();
 }
-
 
 void CameraDriver::init()
 {
-    initialized = false;
-    imu_initialized = false;
-    // init required data
-    buffer_size = 640 * 480 * 2 + 2048; 
-    image_buff = new u8[buffer_size];
-    has_new_frame = false;
-    imu_init_state = 0;
+    // receive image and imu number
+    imu_received_num_ = 0;
+    img_received_num_ = 0;
+
+    //#####set hardware related variables##########
+    is_color_ = false;
+    initial_ts_ = 0;
+
+    //#####set image usb transfer related variables
+    usb_packet_header_size_ = 32;
+    if(is_color_)
+    {
+        usb_packet_image_size_ = (int)IMAGE_WIDTH*IMAGE_HEIGHT*3*2/IMAGE_PART;
+    }
+    else
+    {
+        usb_packet_image_size_ = (int)IMAGE_WIDTH*IMAGE_HEIGHT*2/IMAGE_PART;
+    }
     
-    
-    current_image_time = 0;
-    current_imu_time = 0;
-    time_elapsed =  0;
-    
+    //
+    buffer_size = IMAGE_WIDTH*IMAGE_HEIGHT*2+2048;
+    data_buff = new u8[buffer_size];
+
+    img_buf_size_ = 0;
+    imu_buf_size_ = 0;
+
+    //
+    if(is_color_)
+    {
+        image_buff = new u8[IMAGE_WIDTH*IMAGE_HEIGHT*3*2];
+    }
+    else
+    {
+        image_buff = new u8[IMAGE_WIDTH*IMAGE_HEIGHT*2];
+    }
+
     int r;
     int err;
     ssize_t cnt;
@@ -180,16 +227,10 @@ void CameraDriver::init()
         return; 
     }
     
-    initialized = true;
-}
-
-void CameraDriver::get_imu_data(float acc[3], float gyro[3])
-{
-    for (int i = 0; i < 3; i++)
-    {
-        acc[i] = acc_raw[i];
-        gyro[i] = gyro_raw[i]; 
-    }
+    initialized_ = true;
+    
+    // multi thread 
+    producer_thread = thread(&CameraDriver::produce, this);
 }
 
 // produce image message and imu message
@@ -197,226 +238,188 @@ void CameraDriver::produce()
 {
     while (true)
     {
+        int processed_image_part = 0;
+        double image_ts;
         for (int  i = 0; i < IMAGE_PART; i++)
         {
-            int error = libusb_bulk_transfer(dev_handle, bulk_ep_in, data_buff, buffer_size, &transferd, 1000);
+            processed_image_part++;
 
+            int transfered = 0;
+            int error = libusb_bulk_transfer(dev_handle, bulk_ep_in, data_buff, buffer_size, &transfered, 1000);
+
+            // libusb transfer error
+            if(error != 0)
+            {
+                processed_image_part = 0;
+                continue;
+            }
+
+            // synchronize the image part
             if (*(data_buff + 3) !=  i)
-            return false;
+            {
+                processed_image_part = 0;
+                continue;
+            }
 
-            if (transferd ==  0)
+            if (transfered ==  0)
             {
                 std::cout <<  "============================================" <<  std::endl;
                 std::cout <<  "Warning: No data received ! Please check the buld endpoint address" <<  std::endl;
                 std::cout <<  "============================================" <<  std::endl;
-                return false;
+                processed_image_part = 0;
+                continue;
             }
 
-            memcpy(image_buff + i * data_incremental, data_buff + 32, data_incremental);
+            //#######First process the 32 bytes config part####
+            // the first four byte is frame header
+//            if(data_buff[0] != 0x01|| data_buff[1]!=0xfe||data_buff[2]!=0x01||data_buff[3]!=0xfe)
+//                continue;
 
-            if (error == 0) 
+            //#####byte 8 and byte 9 stand for two imu ssampling interval time
+            int time_interval = *(data_buff + 8) | *(data_buff + 9) <<  8;
+            //time stamp one stand for 256 108M clock duty
+            double time_elapsed = 1.0 * time_interval * 256 / 108;
+//            std::cout <<  time_elapsed <<  std::endl;
+            current_ts_ += time_elapsed;
+            if(i == 0)
+                image_ts = current_ts_;
+
+            //######Then process the succeding image part
+            memcpy(image_buff+i*usb_packet_image_size_, data_buff + 32, usb_packet_image_size_);
+
+            //#####process the imu message
+            int raw_acc_x = (short) (data_buff[12] | data_buff[13] << 8);
+            int raw_acc_y = (short) (data_buff[14] | data_buff[15] << 8);
+            int raw_acc_z = (short) (data_buff[16] | data_buff[17] << 8);
+            int raw_gyro_x = (short) (data_buff[18] | data_buff[19] << 8);
+            int raw_gyro_y = (short) (data_buff[20] | data_buff[21] << 8);
+            int raw_gyro_z = (short) (data_buff[22] | data_buff[23] << 8);
+
+            double acc_x_measure = raw_acc_x * 1.0f / 16384 * 9.8;
+            double acc_y_measure = raw_acc_y * 1.0f / 16384 * 9.8;
+            double acc_z_measure = raw_acc_z * 1.0f / 16384 * 9.8;
+
+            double gyro_x_measure = raw_gyro_x * 1.0f / 16.4;
+            double gyro_y_measure = raw_gyro_y * 1.0f / 16.4;
+            double gyro_z_measure = raw_gyro_z * 1.0f / 16.4;
+
+//            cout << "IMU gyro measurement:" << gyro_x_measure << " " << gyro_y_measure << " "
+//                 << gyro_z_measure << endl;
+
+//            cout << "IMU acc measurement:" << acc_x_measure << " " << acc_y_measure << " "
+//                 << acc_z_measure << endl;
+
+            imu_msg new_imu_msg;
+            new_imu_msg.set_ts(current_ts_);
+            new_imu_msg.set_acc_data(acc_x_measure, acc_y_measure, acc_z_measure);
+            new_imu_msg.set_gyro_data(gyro_x_measure, gyro_y_measure, gyro_z_measure);
+
             {
-                // frame header
-                if (((*data_buff) ==  0x01) & (*(data_buff + 1) ==  0xfe) & (*(data_buff + 2) ==  0x01) & (*(data_buff + 3) ==  0xfe))
+//                cout << "Get imu message" << endl;
+                imu_mutex_.lock();
+                if(imu_buf_size_ >= IMU_BUFFER_SIZE)
                 {
-
-                }
-                printf("%2x %2x %2x %2x\n",  *(data_buff),  *(data_buff + 1),  *(data_buff + 2),  *(data_buff + 3));
-
-                int time_stamp = *(data_buff + 8) | *(data_buff + 9) <<  8;
-
-                time_elapsed = 1.0 * time_stamp * 256 / 108;
-                std::cout <<  time_elapsed <<  std::endl;
-
-                // time elapsed 
-                imu_interval[i] = time_elapsed;
-                image_interval = image_interval + time_elapsed;
-
-                current_image_time = current_image_time + time_elapsed;
-                current_imu_time = current_imu_time + time_elapsed;
-
-                int raw_acc_x = (short) (data_buff[12] | data_buff[13] << 8);
-                int raw_acc_y = (short) (data_buff[14] | data_buff[15] << 8);
-                int raw_acc_z = (short) (data_buff[16] | data_buff[17] << 8);
-
-                int raw_gyro_x = (short) (data_buff[18] | data_buff[19] << 8);
-                int raw_gyro_y = (short) (data_buff[20] | data_buff[21] << 8);
-                int raw_gyro_z = (short) (data_buff[22] | data_buff[23] << 8);
-
-                int raw_temprature = (short) (data_buff[24] | data_buff[25] << 8);
-
-                acc_raw[0 + 3 * i] = raw_acc_x * 1.0 / 16384 * 9.8;
-                acc_raw[1 + 3 * i] = raw_acc_y * 1.0 / 16384 * 9.8;
-                acc_raw[2 + 3 * i] = raw_acc_z * 1.0 / 16384 * 9.8;
-
-                gyro_raw[0 + 3 * i] = raw_gyro_x * 1.0 / 16.4;
-                gyro_raw[1 + 3 * i] = raw_gyro_y * 1.0 / 16.4;
-                gyro_raw[2 + 3 * i] = raw_gyro_z * 1.0 / 16.4;
-
-                if (imu_init_state <= 100)
-                {
-                    acc_zero_bias[0] = (acc_zero_bias[0] * imu_init_state + acc_raw[0 + 3 * i]) / (imu_init_state + 1);
-                    acc_zero_bias[1] = (acc_zero_bias[1] * imu_init_state + acc_raw[1 + 3 * i]) / (imu_init_state + 1);
-                    acc_zero_bias[2] = (acc_zero_bias[2] * imu_init_state + acc_raw[2 + 3 * i]) / (imu_init_state + 1);
-
-                    gyro_zero_bias[0] = (gyro_zero_bias[0] * imu_init_state + gyro_raw[0 + 3 * i]) / (imu_init_state + 1);
-                    gyro_zero_bias[1] = (gyro_zero_bias[1] * imu_init_state + gyro_raw[1 + 3 * i]) / (imu_init_state + 1);
-                    gyro_zero_bias[2] = (gyro_zero_bias[2] * imu_init_state + gyro_raw[2 + 3 * i]) / (imu_init_state + 1);
-                }
-                else
-                {
-                    imu_initialized = true;
-
-                    gyro_raw[0 + 3 * i] -=  gyro_zero_bias[0];
-                    gyro_raw[1 + 3 * i] -=  gyro_zero_bias[1];
-                    gyro_raw[2 + 3 * i] -=  gyro_zero_bias[2];
+                    imu_deque_.pop_front();
+                    imu_buf_size_--;
                 }
 
-                imu_init_state++;
+                imu_deque_.push_back(new_imu_msg);
+                imu_buf_size_++;
 
-                if (imu_initialized)
-                {
-                    std::cout <<  acc_raw[0 + 3 * i] << " " <<  acc_raw[1 + 3 * i] <<  " "<< acc_raw[2 + 3 * i] <<  std::endl;
-                    std::cout <<  gyro_raw[0 + 3 * i] << " " <<  gyro_raw[1 + 3 * i] <<  " "<< gyro_raw[2 + 3 * i] <<  std::endl;
-                }
+                imu_mutex_.unlock();
             }
 
+            int raw_temprature = (short) (data_buff[24] | data_buff[25] << 8);
+        }
+
+        // change image data to
+        if(processed_image_part == IMAGE_PART)
+        {
             int cnt_y,  cnt_x;
+
+            Mat left_image, right_image;
+            if(is_color_)
+            {
+                left_image = Mat::zeros(IMAGE_HEIGHT, IMAGE_WIDTH, CV_8UC3);
+                right_image = Mat::zeros(IMAGE_HEIGHT, IMAGE_WIDTH, CV_8UC3);
+            }
+            else
+            {
+                left_image = Mat::zeros(IMAGE_HEIGHT, IMAGE_WIDTH, CV_8UC1);
+                right_image = Mat::zeros(IMAGE_HEIGHT, IMAGE_WIDTH, CV_8UC1);
+            }
+
+            u8* pcS = image_buff;
             for (cnt_y  = 0; cnt_y < 480; cnt_y++)
             {
                 for (cnt_x = 0; cnt_x < 640; cnt_x++)
                 {
-                    // left image
+                    // left image, the image is flipped
                     left_image.at<uchar>(479 - cnt_y, cnt_x) = *(pcS + cnt_y * 1280 + cnt_x * 2);
 
                     // right image
                     right_image.at<uchar>(479 - cnt_y, cnt_x) = *(pcS + cnt_y * 1280 + cnt_x * 2 + 1);
                 }
             }
+
+//            imshow("thread left image", left_image);
+//            cvWaitKey(1);
+
+            image_msg new_image_msg;
+            new_image_msg.set_image_msg(image_ts, left_image, right_image);
+
+            //
+            {
+//                cout <<  "Get image message" <<  endl;
+                img_mutex_.lock();
+
+                if(img_buf_size_ >= IMAGE_BUFFER_SIZE)
+                {
+                    img_deque_.push_front(image_msg());
+                    img_buf_size_--;
+                }
+
+                img_deque_.push_back(new_image_msg);
+                img_buf_size_++;
+
+                img_mutex_.unlock();
+            }
         }
+
+        processed_image_part = 0;
+        
+        usleep(20000);
+        //
     }
 }
 
-// 
-bool CameraDriver::get_frame(cv::Mat &left_image, cv::Mat &right_image, float acc[12],  float gyro[12],float& image_interval, float imu_interval[4])
+void CameraDriver::consume(vector<image_msg>& image_msgs, vector<imu_msg>& imu_msgs)
 {
-    time_elapsed = 0;
-    has_new_frame = false;
-    
-    if (left_image.rows !=  480 |  left_image.cols !=  640 |  right_image.rows !=  480 |  right_image.cols !=  640)
+    image_msgs.clear();
+    imu_msgs.clear();
+
+    // consume image messages
     {
-        std::cout <<  left_image.rows <<  left_image.cols <<  std::endl;
-        std::cout <<  "Error: the image size should be: 640 x 480" <<  std::endl;
-    }
-    
-    int transferd;
-    unsigned char * pcS = (u8*) (image_buff);
-    const int picture_part = 10;
-
-    const int part_frame_size = 640 * 480 * 2 / picture_part + 32;
-    const int data_incremental = 640 * 480 * 2 / picture_part;
-    
-    u8 data_buff[part_frame_size];
-
-    for (int  i = 0; i < picture_part; i++)
-    {
-        int error = libusb_bulk_transfer(dev_handle, bulk_ep_in, data_buff, buffer_size, &transferd, 1000);
-        
-        if (*(data_buff + 3) !=  i)
-            return false;
-        
-        if (transferd ==  0)
+        img_mutex_.lock();
+        while(img_buf_size_>0)
         {
-            std::cout <<  "============================================" <<  std::endl;
-            std::cout <<  "Warning: No data received ! Please check the buld endpoint address" <<  std::endl;
-            std::cout <<  "============================================" <<  std::endl;
-            return false;
+            image_msgs.push_back(img_deque_.front());
+            img_deque_.pop_front();
+            img_buf_size_--;
         }
-        
-        memcpy(image_buff + i * data_incremental, data_buff + 32, data_incremental);
-
-        if (error == 0) 
-        {
-            // frame header
-            if (((*data_buff) ==  0x01) & (*(data_buff + 1) ==  0xfe) & (*(data_buff + 2) ==  0x01) & (*(data_buff + 3) ==  0xfe))
-            {
-                
-            }
-            printf("%2x %2x %2x %2x\n",  *(data_buff),  *(data_buff + 1),  *(data_buff + 2),  *(data_buff + 3));
-
-            int time_stamp = *(data_buff + 8) | *(data_buff + 9) <<  8;
-
-            time_elapsed = 1.0 * time_stamp * 256 / 108;
-            std::cout <<  time_elapsed <<  std::endl;
-            
-            // time elapsed 
-            imu_interval[i] = time_elapsed;
-            image_interval = image_interval + time_elapsed;
-
-            current_image_time = current_image_time + time_elapsed;
-            current_imu_time = current_imu_time + time_elapsed;
-
-            int raw_acc_x = (short) (data_buff[12] | data_buff[13] << 8);
-            int raw_acc_y = (short) (data_buff[14] | data_buff[15] << 8);
-            int raw_acc_z = (short) (data_buff[16] | data_buff[17] << 8);
-
-            int raw_gyro_x = (short) (data_buff[18] | data_buff[19] << 8);
-            int raw_gyro_y = (short) (data_buff[20] | data_buff[21] << 8);
-            int raw_gyro_z = (short) (data_buff[22] | data_buff[23] << 8);
-
-            int raw_temprature = (short) (data_buff[24] | data_buff[25] << 8);
-
-            acc_raw[0 + 3 * i] = raw_acc_x * 1.0 / 16384 * 9.8;
-            acc_raw[1 + 3 * i] = raw_acc_y * 1.0 / 16384 * 9.8;
-            acc_raw[2 + 3 * i] = raw_acc_z * 1.0 / 16384 * 9.8;
-
-            gyro_raw[0 + 3 * i] = raw_gyro_x * 1.0 / 16.4;
-            gyro_raw[1 + 3 * i] = raw_gyro_y * 1.0 / 16.4;
-            gyro_raw[2 + 3 * i] = raw_gyro_z * 1.0 / 16.4;
-
-            if (imu_init_state <= 100)
-            {
-                acc_zero_bias[0] = (acc_zero_bias[0] * imu_init_state + acc_raw[0 + 3 * i]) / (imu_init_state + 1);
-                acc_zero_bias[1] = (acc_zero_bias[1] * imu_init_state + acc_raw[1 + 3 * i]) / (imu_init_state + 1);
-                acc_zero_bias[2] = (acc_zero_bias[2] * imu_init_state + acc_raw[2 + 3 * i]) / (imu_init_state + 1);
-
-                gyro_zero_bias[0] = (gyro_zero_bias[0] * imu_init_state + gyro_raw[0 + 3 * i]) / (imu_init_state + 1);
-                gyro_zero_bias[1] = (gyro_zero_bias[1] * imu_init_state + gyro_raw[1 + 3 * i]) / (imu_init_state + 1);
-                gyro_zero_bias[2] = (gyro_zero_bias[2] * imu_init_state + gyro_raw[2 + 3 * i]) / (imu_init_state + 1);
-            }
-            else
-            {
-                imu_initialized = true;
-                
-                gyro_raw[0 + 3 * i] -=  gyro_zero_bias[0];
-                gyro_raw[1 + 3 * i] -=  gyro_zero_bias[1];
-                gyro_raw[2 + 3 * i] -=  gyro_zero_bias[2];
-            }
-            
-            imu_init_state++;
-
-            if (imu_initialized)
-            {
-                std::cout <<  acc_raw[0 + 3 * i] << " " <<  acc_raw[1 + 3 * i] <<  " "<< acc_raw[2 + 3 * i] <<  std::endl;
-                std::cout <<  gyro_raw[0 + 3 * i] << " " <<  gyro_raw[1 + 3 * i] <<  " "<< gyro_raw[2 + 3 * i] <<  std::endl;
-            }
-        }
-
-        int cnt_y,  cnt_x;
-        for (cnt_y  = 0; cnt_y < 480; cnt_y++)
-        {
-            for (cnt_x = 0; cnt_x < 640; cnt_x++)
-            {
-                // left image
-                left_image.at<uchar>(479 - cnt_y, cnt_x) = *(pcS + cnt_y * 1280 + cnt_x * 2);
-
-                // right image
-                right_image.at<uchar>(479 - cnt_y, cnt_x) = *(pcS + cnt_y * 1280 + cnt_x * 2 + 1);
-            }
-        }
+        img_mutex_.unlock();
     }
 
-    has_new_frame = true;
-
-    return true;
+    // consume imu messages
+    {
+        imu_mutex_.lock();
+        while(imu_buf_size_>0)
+        {
+            imu_msgs.push_back(imu_deque_.front());
+            imu_deque_.pop_front();
+            imu_buf_size_--;
+        }
+        imu_mutex_.unlock();
+    }
 }
+

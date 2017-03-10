@@ -1,6 +1,8 @@
 #ifndef MAKER_BINOCULAR_H
 #define MAKER_BINOCULAR_H
 #include <opencv2/opencv.hpp>
+#include <mutex>
+#include <thread>
 #include <libusb-1.0/libusb.h>
 #include <boost/concept_check.hpp>
 
@@ -10,6 +12,8 @@ using namespace std;
 #define IMAGE_PART 10
 #define IMAGE_WIDTH 640
 #define IMAGE_HEIGHT 480
+#define IMU_BUFFER_SIZE 300
+#define IMAGE_BUFFER_SIZE 30
 
 class imu_msg
 {
@@ -17,6 +21,15 @@ public:
     imu_msg();
     ~imu_msg();
 
+    void set_ts(double ts);
+    // set acc data
+    void set_acc_data(double acc_x, double acc_y, double acc_z);
+    // set gyro data
+    void set_gyro_data(double gyro_x, double gyro_y, double gyro_z);
+    // print imu msg conten
+    void print_content();
+
+private:
     double ts_;                                               // time elapsed from the start of the driver
     double acc_x_, acc_y_, acc_z_;
     double gyro_x_, gyro_y_, gyro_z_;
@@ -29,6 +42,12 @@ public:
     image_msg();
     ~image_msg();
 
+    void set_image_msg(double ts, Mat& left_image, Mat& right_image);
+    
+    inline Mat left_image() {return left_image_;}
+    inline Mat right_image() {return right_image_;}
+
+private:
     // time elapsed from the start of the driver
     double ts_;
     Mat left_image_;
@@ -78,36 +97,7 @@ public:
      * 
      * @return bool
      */
-    bool is_initialized() {return initialized;}
-    
-    /**
-     * @brief Get the flag weather a new frame has been received succesfully
-     * 
-     * @return bool
-     */
-    bool new_frame_arrived() {return has_new_frame;}
-
-    /**
-     * @brief The time elapsed between the current frame and last frame
-     * 
-     * @return long
-     */
-    long get_camera_time_elapsed() {return time_elapsed;}
-    
-    long get_imu_time_elapsed() {return imu_time_elpased;}
-    /**
-     * @brief Total time elapsed since start for camera data
-     * 
-     * @return long int
-     */
-    long get_current_camera_time() {return current_image_time;}
-    
-    /**
-     * @brief Total time elapsed since start for imu data
-     * 
-     * @return long int
-     */
-    long get_current_imu_time() {return current_imu_time;}
+    bool is_initialized() {return initialized_;}
     
     /**
      * @brief Get the imu data,  three axis acc and three axis gyro
@@ -123,8 +113,7 @@ public:
      */
     void produce();
     
-    
-    void consume();
+    void consume(vector<image_msg>& image_msgs, vector<imu_msg>& imu_msgs);
 
 private:
 
@@ -141,50 +130,41 @@ private:
     libusb_device *device;
     libusb_device_handle *dev_handle;
 
-    u8 * image_buff;
-    
-    /// time elapsed since last camera frame,  unit is us
-    long time_elapsed;
-    /// time elapsed since last imu frame,  unit is us
-    long imu_time_elpased;
-    /// the time elapsed since start of camera,  unit is us
-    long current_image_time;
-    ///  the time elapsed since the start of imu,  unit is us
-    long current_imu_time;
-    
+    u8 *data_buff;
+    u8 *image_buff;
+    int buffer_size;
+
     /// builk in end point address
     u8 bulk_ep_in;
     
-    // sample 1000 imu datas to estimate tht zero bias
-    int imu_init_state;
-    double acc_zero_bias[3];
-    double gyro_zero_bias[3];
-    
-    // 
-    bool imu_initialized;
-    // 
-    float gyro_raw[3];
-    float acc_raw[3];
-    
-    // left and right image
-    cv::Mat left_image_;
-    cv::Mat right_image_;
-    
-    // quater part
-    int quarter_part_;
-    
-    int buffer_size;
+    // hardware initialize
+    bool initialized_;
 
-    bool initialized;
-    bool has_new_frame;
-    
+    // initial time stamp, unit is us
+    double initial_ts_;
+    double current_ts_;
+
+    //##################image transfer related variable####
+
+    // the header 32 byte is cofig bytes and imu bytes
+    int usb_packet_header_size_;
+    // the continues bytes are image content bytes
+    int usb_packet_image_size_;
+
+    //#################hardware setting####################
+    bool is_color_;
+
     // ring buffer store imu and image message
-    std::vector<imu_msg> imu_ring_buf_;
-    int imu_idx_;
+    std::deque<imu_msg> imu_deque_;
+    int imu_buf_size_;
+    int imu_received_num_;
     std::mutex imu_mutex_;
-    std::vector<image_msg> img_ring_buf_; 
-    int img_idx_;
+    std::deque<image_msg> img_deque_;
+    int img_buf_size_;
+    int img_received_num_;
     std::mutex img_mutex_;
+    
+    std::thread producer_thread;
 };
 
 #endif
