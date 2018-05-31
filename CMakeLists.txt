@@ -7,6 +7,12 @@ SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/CMakeModules/"
 find_package(OpenCV REQUIRED)
 find_package(Glog REQUIRED)
 
+find_package(catkin REQUIRED COMPONENTS 
+	roscpp
+	sensor_msgs
+	cv_bridge
+)
+
 include(CheckCXXCompilerFlag)
 CHECK_CXX_COMPILER_FLAG("-std=c++11" COMPILER_SUPPORTS_CXX11)
 CHECK_CXX_COMPILER_FLAG("-std=c++0x" COMPILER_SUPPORTS_CXX0X)
@@ -25,6 +31,7 @@ endif()
 include_directories(
 	${PROJECT_SOURCE_DIR}/include
 	${OpenCV_INCLUDE_DIRS}
+	${catkin_INCLUDE_DIRS}
 )
 
 add_executable(visensor_driver 
@@ -37,4 +44,5 @@ target_link_libraries(visensor_driver
 	-lpthread
 	${OpenCV_LIBS}
 	${GLOG_LIBRARIES}
+	${catkin_LIBRARIES}
 )

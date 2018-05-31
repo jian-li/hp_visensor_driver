@@ -7,16 +7,12 @@
 
 using namespace std;
 
-ViSensorDriver::ViSensorDriver() : synchronized(false), use_buffer1(true) {
+ViSensorDriver::ViSensorDriver()
+    : synchronized(false), use_buffer1(true), last_img_ts(0), last_imu_ts(0) {
   init();
 }
 
-ViSensorDriver::~ViSensorDriver() {
-  libusb_free_device_list(devs, 1);
-  libusb_close(dev_handle);
-
-  producer_thread.join();
-}
+ViSensorDriver::~ViSensorDriver() {}
 
 void ViSensorDriver::init() {
 
@@ -24,6 +20,13 @@ void ViSensorDriver::init() {
 
   // multi thread
   producer_thread = thread(&ViSensorDriver::produce, this);
+}
+
+void ViSensorDriver::shutdown() {
+  libusb_free_device_list(devs, 1);
+  libusb_close(dev_handle);
+
+  producer_thread.join();
 }
 
 void ViSensorDriver::init_usb_device() {
@@ -128,7 +131,7 @@ void ViSensorDriver::init_usb_device() {
 }
 
 void ViSensorDriver::synchronize(int transfered_num) {
-
+  // printf("Synchronize Data!!!!\r\n");
   int i = 0;
   for (i = 0; i < transfered_num; i++) {
     if ((i + 4 <= transfered_num) && ((receive_buffer[i]) == 0x33) &&
@@ -158,11 +161,11 @@ void ViSensorDriver::synchronize(int transfered_num) {
   // copy the synchronized data to buffer
   if (synchronized == true) {
     buffer1_len = 0;
-    printf("Data Sychronized!!!!\r\n");
+    // printf("Data Sychronized!!!!\r\n");
     memcpy(buffer1, receive_buffer + i, transfered_num - i);
     buffer1_len += transfered_num - i;
     buffer2_len = 0;
-    printf("Buffer1 Size %d !!\r\n", buffer1_len);
+    // printf("Buffer1 Size %d !!\r\n", buffer1_len);
   } else {
     buffer1_len = 0;
     buffer2_len = 0;
@@ -171,13 +174,14 @@ void ViSensorDriver::synchronize(int transfered_num) {
 
 // produce image message and imu message
 void ViSensorDriver::produce() {
+
   bool buffer1_full = false, buffer2_full = false;
   while (true) {
-
+    // printf("Produce Data!!!!\r\n");
     int transfered = 0;
 
     int error = libusb_bulk_transfer(dev_handle, bulk_ep_in, receive_buffer,
-                                     PACKETSIZE, &transfered, 1000);
+                                     PACKETSIZE, &transfered, 100);
 
     if (synchronized == false) {
       synchronize(transfered);
@@ -185,9 +189,9 @@ void ViSensorDriver::produce() {
 
       assert(buffer1_len + transfered < BUFFER_SIZE);
       assert(buffer2_len + transfered < BUFFER_SIZE);
-      printf("Parse Data!!!!\r\n");
-      printf("buffer1 size is: %d, buffer2 size is: %d\r\n", buffer1_len,
-             buffer2_len);
+      // printf("Parse Data!!!!\r\n");
+      // printf("buffer1 size is: %d, buffer2 size is: %d\r\n", buffer1_len,
+      //  buffer2_len);
 
       if ((buffer1_len == 0 && buffer2_len == 0) || buffer1_len != 0)
         use_buffer1 = true;
@@ -199,8 +203,9 @@ void ViSensorDriver::produce() {
 
       // if the first buffer is used
       if (use_buffer1) {
-        if (buffer1_len + transfered > FRAMELEN) {
+        if (buffer1_len + transfered >= FRAMELEN) {
           buffer1_full = true;
+          buffer2_full = false;
           memcpy(buffer1 + buffer1_len, receive_buffer, FRAMELEN - buffer1_len);
           buffer2_len = 0;
           memcpy(buffer2 + buffer2_len, receive_buffer + FRAMELEN - buffer1_len,
@@ -211,10 +216,14 @@ void ViSensorDriver::produce() {
         } else {
           memcpy(buffer1 + buffer1_len, receive_buffer, transfered);
           buffer1_len += transfered;
+          buffer1_full = false;
+          buffer2_full = false;
         }
       } else {
-        if (buffer2_len + transfered > FRAMELEN) {
+        if (buffer2_len + transfered >= FRAMELEN) {
+          buffer1_full = false;
           buffer2_full = true;
+
           memcpy(buffer2 + buffer2_len, receive_buffer, FRAMELEN - buffer2_len);
 
           buffer1_len = 0;
@@ -226,34 +235,23 @@ void ViSensorDriver::produce() {
         } else {
           memcpy(buffer2 + buffer2_len, receive_buffer, transfered);
           buffer2_len += transfered;
+          buffer1_full = false;
+          buffer2_full = false;
         }
       }
 
-      printf("buffer1 size is: %d, buffer2 size is: %d\r\n", buffer1_len,
-             buffer2_len);
-
-      // assert the data format is right
-      if (use_buffer1) {
-        if (buffer1_len >= 16)
-          if ((buffer1[0] != 0x33) || (buffer1[1] != 0xcc) ||
-              (buffer1[14] != 0x22) || (buffer1[15] != 0xdd))
-            synchronized = false;
-      } else {
-        if (buffer2_len >= 16)
-          if ((buffer2[0] != 0x33) || (buffer2[1] != 0xcc) ||
-              (buffer2[14] != 0x22) || (buffer2[15] != 0xdd))
-            synchronized = false;
-      }
+      // printf("buffer1 size is: %d, buffer2 size is: %d\r\n", buffer1_len,
+      //  buffer2_len);
 
       if (buffer1_full || buffer2_full) {
         unsigned char *buffer_ptr = NULL;
         if (buffer1_full) {
-          printf("use buffer1\r\n");
+          // printf("use buffer1\r\n");
           buffer_ptr = buffer1;
         }
 
         if (buffer2_full) {
-          printf("use buffer2\r\n");
+          // printf("use buffer2\r\n");
           buffer_ptr = buffer2;
         }
 
@@ -263,10 +261,10 @@ void ViSensorDriver::produce() {
             (buffer_ptr[14] != 0x22) || (buffer_ptr[15] != 0xdd))
           resynchronize = true;
 
-        if (resynchronize == false)
-          printf("Frame Header Sychronized!!!!\r\n");
-        else
-          printf("Frame Header Unsynchronized!!!\r\n");
+        // if (resynchronize == false)
+        //   printf("Frame Header Sychronized!!!!\r\n");
+        // else
+        //   printf("Frame Header Unsynchronized!!!\r\n");
 
         // check imu synchronized state
         int imu_i = 16;
@@ -281,19 +279,19 @@ void ViSensorDriver::produce() {
             (buffer_ptr[imu_i + 183] != 0xbb))
           resynchronize = true;
 
-        if (resynchronize == false)
-          printf("Data Sychronized, ready to show!!!!\r\n");
-        else {
+        if (resynchronize == true) {
           synchronized = false;
-          printf("Data Unsynchronized, resynchronize!!!\r\n");
+          // printf("Data Unsynchronized, resynchronize!!!\r\n");
         }
+        // else
+        //   printf("Data Sychronized, ready to show!!!!\r\n");
 
         if (synchronized == false)
           continue;
 
         // assert();
         // data frame second
-        printf("Show Captured Data!!!!\r\n");
+        // printf("Show Captured Data!!!!\r\n");
         parse_frame(buffer_ptr, FRAMELEN);
 
         if (buffer1_full == true) {
@@ -306,7 +304,7 @@ void ViSensorDriver::produce() {
       }
     }
 
-    usleep(20000);
+    usleep(30000);
   }
   //
 }
@@ -322,22 +320,22 @@ void ViSensorDriver::parse_frame(const u8 *data_ptr, const int &data_size) {
     if (img_ts_data.int_value - last_img_ts >= 1000) {
       cout << "error lost frame!!!! img_TimeStamp is " << img_ts_data.int_value
            << "   " << img_ts_data.int_value - last_img_ts << endl;
-    }
+    } else
+      // printf("image timestamp is: %.8f \r\n", (float)img_ts_data.int_value);
+      printf("Delta IMG Time is: %.8f \r\n",
+             1e-4 * (img_ts_data.int_value - last_img_ts));
   }
 
   last_img_ts = img_ts_data.int_value;
 
-  //   Sensor_Frame_data.ImgTimeStamp = img_TimeStamp_last;
-  //   Sensor_Frame_data.ImgTimeStamp *= 100000;
-
   int i = 18;
   imu_msg imu_msgs[10];
 
-  if ((data_ptr[16] != 0x66) || (data_ptr[16 + 1] != 0xdd) ||
-      (data_ptr[16 + 182] != 0x44) || (data_ptr[16 + 183] != 0xbb))
-    std::cout << "IMU data error" << std::endl;
-  else
-    std::cout << "IMU data right" << std::endl;
+  // if ((data_ptr[16] != 0x66) || (data_ptr[16 + 1] != 0xdd) ||
+  //     (data_ptr[16 + 182] != 0x44) || (data_ptr[16 + 183] != 0xbb))
+  //   std::cout << "IMU data error" << std::endl;
+  // else
+  //   std::cout << "IMU data right" << std::endl;
 
   for (int j = 0; j < 10; j++) {
 
@@ -348,8 +346,21 @@ void ViSensorDriver::parse_frame(const u8 *data_ptr, const int &data_size) {
     imu_ts_data.char_value[1] = (data_ptr[i + 2 + 18 * j]);
     imu_ts_data.char_value[0] = (data_ptr[i + 3 + 18 * j]);
 
+    if (last_imu_ts != 0) {
+      if (imu_ts_data.int_value - last_imu_ts >= 70) {
+        cout << "error lost imu frame!!!! imu_TimeStamp is "
+             << imu_ts_data.int_value << "   "
+             << imu_ts_data.int_value - last_imu_ts << endl;
+      } else
+        // printf("image timestamp is: %.8f \r\n",
+        // (float)img_ts_data.int_value);
+        printf("Delta IMU Time is: %.8f \r\n",
+               1e-4 * (imu_ts_data.int_value - last_imu_ts));
+    }
+
+    last_imu_ts = imu_ts_data.int_value;
+
     imu_msgs[j].timestamp = imu_ts_data.int_value;
-    // Sensor_Frame_data.ImuTimeStamp[j] *= 100000;
 
     imu_msgs[j].acc_x = (short)(((data_ptr[i + 18 * j + 4]) << 8) +
                                 (data_ptr[i + 18 * j + 5])) /
@@ -371,33 +382,33 @@ void ViSensorDriver::parse_frame(const u8 *data_ptr, const int &data_size) {
                                  (data_ptr[i + 18 * j + 17])) *
                          3.14159 / 5904;
 
+    // printf("imu timestamp is: %.8f \r\n", imu_msgs[j].timestamp);
     // cout << "imu timestamp " << imu_msgs[j].timestamp << std::endl;
-    // printf("Acce Data is: %f %f %f\r\n", imu_msgs[j].acc_x, imu_msgs[j].acc_y,
+    // printf("Acce Data is: %f %f %f\r\n", imu_msgs[j].acc_x,
+    // imu_msgs[j].acc_y,
     //        imu_msgs[j].acc_z);
-    // printf("Gyro Data is: %f %f %f\r\n", imu_msgs[j].gyro_x, imu_msgs[j].gyro_y,
+    // printf("Gyro Data is: %f %f %f\r\n", imu_msgs[j].gyro_x,
+    // imu_msgs[j].gyro_y,
     //        imu_msgs[j].gyro_z);
   }
 
   i = 184 + 16; //图像数据的起始位置
 
   image_msg image_msgs;
+  image_msgs.timestamp = img_ts_data.int_value;
   memcpy(image_msgs.right_image, data_ptr + i, 307200);
   memcpy(image_msgs.left_image, data_ptr + i + 307200, 307200);
 
   //
   {
-    img_mutex.lock();
+    data_mutex.lock();
 
     if (img_queue.size() >= IMAGE_BUFFER_SIZE) {
       img_queue.pop();
     }
 
     img_queue.push(image_msgs);
-    img_mutex.unlock();
-  }
 
-  {
-    imu_mutex.lock();
     for (int i = 0; i < 10; i++) {
       if (imu_queue.size() >= IMU_BUFFER_SIZE) {
         imu_queue.pop();
@@ -405,7 +416,8 @@ void ViSensorDriver::parse_frame(const u8 *data_ptr, const int &data_size) {
 
       imu_queue.push(imu_msgs[i]);
     }
-    imu_mutex.unlock();
+
+    data_mutex.unlock();
   }
 }
 
@@ -413,19 +425,13 @@ bool ViSensorDriver::get_frame(std::queue<imu_msg> &out_imus,
                                std::queue<image_msg> &out_images) {
 
   {
-    img_mutex.lock();
+    data_mutex.lock();
     out_images = img_queue;
     img_queue = std::queue<image_msg>();
-   
-    img_mutex.unlock();
-  }
 
-  {
-    imu_mutex.lock();
     out_imus = imu_queue;
 
     imu_queue = std::queue<imu_msg>();
-    imu_mutex.unlock();
+    data_mutex.unlock();
   }
-
 }

@@ -17,8 +17,8 @@ using namespace std;
 #define BUFFER_SIZE 1229560
 #define PACKETSIZE 614400
 
-#define IMAGE_BUFFER_SIZE 10
-#define IMU_BUFFER_SIZE 100
+#define IMAGE_BUFFER_SIZE 100
+#define IMU_BUFFER_SIZE 1000
 
 #define GValue 9.805
 
@@ -55,6 +55,8 @@ public:
 
   void init();
 
+  void shutdown();
+
   void init_usb_device();
 
   bool get_frame(std::queue<imu_msg>& out_imus, std::queue<image_msg> &out_images);
@@ -89,14 +91,14 @@ private:
 
   // initial time stamp, unit is us
   int curr_img_ts, last_img_ts;
+  int last_imu_ts;
   double initial_ts;
   double current_ts;
 
   std::queue<imu_msg> imu_queue;
-  std::mutex imu_mutex;
 
   std::queue<image_msg> img_queue;
-  std::mutex img_mutex;
+  std::mutex data_mutex;
 
   std::thread producer_thread;
 };
